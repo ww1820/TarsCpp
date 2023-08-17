@@ -41,7 +41,7 @@
 #include "util/tc_openssl.h"
 #endif
 
-static TC_RollLogger __out__;
+static TC_RollLogger __out__;  // 滚动日志
 
 #define NOTIFY_AND_WAIT(msg) { \
 RemoteNotify::getInstance()->report(msg); \
@@ -93,6 +93,8 @@ map<string, string> ServerConfig::Context;
 ///////////////////////////////////////////////////////////////////////////////////////////
 //TC_Config                       Application::_conf;
 //TC_EpollServerPtr               Application::_epollServer  = NULL;
+
+// Communicator指针，Communicator实例就是一个客户端，负责与服务端建立连接，生成RPC服务句柄
 CommunicatorPtr                 Application::_communicator = NULL;
 
 PropertyReportPtr g_pReportRspQueue;
@@ -132,7 +134,7 @@ string Application::getTarsVersion()
     return TARS_VERSION;
 }
 
-CommunicatorPtr& Application::getCommunicator()
+CommunicatorPtr& Application::getCommunicator() // 单例模式
 {
     return _communicator;
 }
@@ -740,10 +742,15 @@ void Application::main(const string &config)
         //解析配置文件
         parseConfig(config);
 
-        //初始化Proxy部分
+        //初始化客户端
+        // new 了 一个 Communicator ，设置 Communicator 属性，但是没有 
+        // Initialize()， Initialize() 会在 Communicator 调用 getServantProxy()
+        // getStatReport() 和 reloadProperty() 被调用，只有第一次调用时才会真正
+        // 的初始化，在 main 中，initializeServer() 第一次调用 getStatReport()
+        // 时 初始化
         initializeClient();
 
-        //初始化Server部分
+        //初始化服务端，对外提供服务
         initializeServer();
 
         vector <TC_EpollServer::BindAdapterPtr> adapters;
@@ -946,7 +953,8 @@ void Application::initializeClient()
 {
 	__out__.info()  << "\n" << OUT_LINE_LONG << endl;
 
-    //初始化通信器
+    // 初始化通信器，getInstance() 继承自 TC_Singleton<CommunicatorFactory>，返回 CommunicatorFactory 指针
+    // _config 中配置了需要的代理
     _communicator = CommunicatorFactory::getInstance()->getCommunicator(_conf);
 
 	__out__.info()  << TC_Common::outfill("[proxy config]:") << endl;
@@ -1300,6 +1308,7 @@ void Application::initializeServer()
         sRspQueue += ServerConfig::ServerName;
         sRspQueue += ".sendrspqueue";
 
+        // _communicator->getStatReport() 会调用 Communicator::initialize()
         g_pReportRspQueue = _communicator->getStatReport()->createPropertyReport(sRspQueue, PropertyReport::avg());
     }
 

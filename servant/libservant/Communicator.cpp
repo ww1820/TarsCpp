@@ -313,7 +313,7 @@ void Communicator::initialize()
     }
 #endif
 
-    _servantProxyFactory = new ServantProxyFactory(this);
+    _servantProxyFactory = new ServantProxyFactory(this);  // 服务代理工厂
 
     //网络线程
     size_t clientThreadNum = TC_Common::strto<size_t>(getProperty("netthread", "1"));
@@ -400,7 +400,7 @@ void Communicator::initialize()
     StatFPrx statPrx = NULL;
     if (!statObj.empty())
     {
-        statPrx = stringToProxy<StatFPrx>(statObj);
+        statPrx = stringToProxy<StatFPrx>(statObj); // 获取上报服务代理
         statPrx->tars_open_keepalive(false);
     }
 
@@ -746,7 +746,7 @@ ServantProxy* Communicator::getServantProxy(const string& objectName, const stri
     return _servantProxyFactory->getServantProxy(objectName, setName, rootServant);
 }
 
-StatReport* Communicator::getStatReport()
+StatReport* Communicator::getStatReport()  // 返回上报类
 {
     Communicator::initialize();
 

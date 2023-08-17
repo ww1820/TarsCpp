@@ -874,6 +874,7 @@ void AdapterProxy::finishInvoke(shared_ptr<ResponsePacket> & rsp)
 	}
 }
 
+// 请求的响应处理
 void AdapterProxy::finishInvoke(ReqMessage * msg)
 {
     // assert(msg->eStatus != ReqMessage::REQ_REQ);

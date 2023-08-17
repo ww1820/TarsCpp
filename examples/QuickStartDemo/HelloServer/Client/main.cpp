@@ -25,16 +25,17 @@ using namespace TestApp;
 
 Communicator* _comm;
 
+// 服务寻址：1. 直接寻址 2. 名字服务。 Demo 中使用的是直接寻址方式
 static string helloObj = "TestApp.HelloServer.HelloObj@tcp -h 127.0.0.1 -p 8999";
 //static string helloObj = "TestApp.HelloServer.HelloObj@tcp -h 127.0.0.1 -p 8199:tcp -h 127.0.0.1 -p 8299 -t 10000";
 
-struct Param
+struct Param    
 {
-	int count;
-	string call;
-	int thread;
-	int buffersize;
-	int netthread;
+	int count;          // 远程调用次数
+	string call;        
+	int thread;         // 线程数
+	int buffersize;     // 
+	int netthread;      // 网络线程数
 	bool hash = false;
 
 	HelloPrx pPrx;
@@ -42,22 +43,23 @@ struct Param
 };
 
 Param param;
-std::atomic<int> callback_count(0);
+std::atomic<int> callback_count(0); // 回调次数
 
 struct HelloCallback : public HelloPrxCallback
 {
+    // t: 远程调用发起时间，i: 当前远程调用次数，从 0 开始, c: 总次数 count
     HelloCallback(int64_t t, int i, int c) : start(t), cur(i), count(c)
     {
 
     }
 
     //call back
-    virtual void callback_testHello(int ret, const string &r)
+    virtual void callback_testHello(int ret, const string &r)    // ret 服务端返回
     {
         assert(ret == 0);
 	    callback_count++;
 
-        if(cur == count-1)
+        if(cur == count-1) // 最后一次调用
         {
             int64_t cost = TC_Common::now2us() - start;
             cout << "callback_testHello count:" << count << ", " << cost << " us, avg:" << 1.*cost/count << "us" << endl;
@@ -75,7 +77,7 @@ struct HelloCallback : public HelloPrxCallback
 };
 
 
-void syncCall(int c)
+void syncCall(int c) // 同步调用
 {
 	string buffer(param.buffersize, 'a');
 
@@ -97,7 +99,7 @@ void syncCall(int c)
         {
             cout << "exception:" << e.what() << endl;
         }
-        ++callback_count;
+        ++callback_count; // 全局变量，回调次数+1
     }
 
     int64_t cost = TC_Common::now2us() - t;
@@ -114,12 +116,12 @@ void asyncCall(int c)
 	//发起远程调用
 	for (int i = 0; i < c; ++i)
 	{
-		HelloPrxCallbackPtr p = new HelloCallback(t, i, c);
+		HelloPrxCallbackPtr p = new HelloCallback(t, i, c); 
 
 		try
 		{
 			if(param.hash) {
-				param.pPrx->tars_hash(i)->async_testHello(p, buffer + "-" + TC_Common::tostr(i));
+				param.pPrx->tars_hash(i)->async_testHello(p, buffer + "-" + TC_Common::tostr(i)); // 发起远程调用，注册回调
 			} else {
 				param.pPrx->async_testHello(p, buffer);
 			}
@@ -289,7 +291,7 @@ int main(int argc, char *argv[])
         }
 
 	    TC_Option option;
-        option.decode(argc, argv);
+        option.decode(argc, argv); // 解析命令行参数
 
 	    param.hash = TC_Common::strto<bool>(option.getValue("hash"));
 		param.count = TC_Common::strto<int>(option.getValue("count"));
@@ -303,7 +305,7 @@ int main(int argc, char *argv[])
 	    param.netthread = TC_Common::strto<int>(option.getValue("netthread"));
 	    if(param.netthread <= 0) param.netthread = 1;
 
-        _comm = new Communicator();
+        _comm = new Communicator(); // 新建Communicator
 
         _comm->setProperty("sendqueuelimit", "1000000");
         _comm->setProperty("asyncqueuecap", "1000000");
@@ -312,17 +314,17 @@ int main(int argc, char *argv[])
 
 //        LocalRollLogger::getInstance()->logger()->setLogLevel(6);
 
-	    param.pPrx = _comm->stringToProxy<HelloPrx>(helloObj);
+	    param.pPrx = _comm->stringToProxy<HelloPrx>(helloObj); // 返回 RPC 服务句柄
 
 	    param.pPrx->tars_connect_timeout(5000);
         param.pPrx->tars_async_timeout(60*1000);
         param.pPrx->tars_ping();
 
-        int64_t start = TC_Common::now2us();
+        int64_t start = TC_Common::now2us();    // 启动时间
 
-        std::function<void(int)> func;
+        std::function<void(int)> func;          // 函数句柄
 
-        if (param.call == "sync")
+        if (param.call == "sync")               // 调用方书
         {
             func = syncCall;
         }
@@ -347,15 +349,15 @@ int main(int argc, char *argv[])
 	    vector<std::thread*> vt;
         for(int i = 0 ; i< param.thread; i++)
         {
-            vt.push_back(new std::thread(func, param.count));
+            vt.push_back(new std::thread(func, param.count)); // func(param.count)
         }
 
-        std::thread print([&]{while(callback_count != param.count * param.thread) {
+        std::thread print([&]{while(callback_count != param.count * param.thread) { // 打印线程
 	        cout << "Hello:" << param.call << ": ----------finish count:" << callback_count << endl;
 	        std::this_thread::sleep_for(std::chrono::seconds(1));
         };});
 
-        for(size_t i = 0 ; i< vt.size(); i++)
+        for(size_t i = 0 ; i< vt.size(); i++) // 主线程等待所有远程调用线程结束
         {
             vt[i]->join();
             delete vt[i];
@@ -363,7 +365,7 @@ int main(int argc, char *argv[])
 
         cout << "(pid:" << std::this_thread::get_id() << ")"
              << "(count:" << param.count << ")"
-             << "(use ms:" << (TC_Common::now2us() - start)/1000 << ")"
+             << "(use ms:" << (TC_Common::now2us() - statr)/1000 << ")"
              << endl;
 
 	    while(callback_count != param.count * param.thread) {

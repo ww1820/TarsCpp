@@ -74,7 +74,7 @@ public:
 
         if (it == _comms.end())
         {
-            _comms[name] = new Communicator(conf);
+            _comms[name] = new Communicator(conf); // 根据配置文件新建 Communicator 对象，返回指针
 
             it = _comms.find(name);
 

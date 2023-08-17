@@ -86,7 +86,7 @@ public:
      * @param strModuleName, 模块名
      * @param strModuleIp, 模块ip
      * @param iReportInterval, 上报间隔单位秒
-     * @param iMaxReporSize一次最大上报包长度。 跟udp最大允许包8k、MTU长度1472有关，暂定取值范围[500-1400]
+     * @param iMaxReporSize, 一次最大上报包长度。 跟udp最大允许包8k、MTU长度1472有关，暂定取值范围[500-1400]
      * @param iSampleRate, 采样比率1/1000
      * @param iMaxSampleCount, 最大采样数
      * @param iReportTimeout, 上报接口调用的超时时间

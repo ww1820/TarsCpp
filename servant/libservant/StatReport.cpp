@@ -54,7 +54,7 @@ StatReport::~StatReport()
     }
 }
 
-void StatReport::terminate()
+void StatReport::terminate() // 终止当前线程
 {
     Lock lock(*this);
 
@@ -76,7 +76,7 @@ void StatReport::setReportInfo(const StatFPrx& statPrx,
 {
     Lock lock(*this);
 
-    _statPrx        = statPrx;
+    _statPrx        = statPrx;  // Communicator 创建的 上报服务代理
 
     _propertyPrx    = propertyPrx;
 
@@ -132,7 +132,7 @@ void StatReport::addStatInterv(int iInterv)
 
     sort(_timePoint.begin(),_timePoint.end());
 
-    auto it = unique(_timePoint.begin(),_timePoint.end());
+    auto it = unique(_timePoint.begin(),_timePoint.end()); // 去重并返回尾地址
 
 	_timePoint.resize(std::distance(_timePoint.begin(),it));
 }
@@ -140,8 +140,10 @@ void StatReport::addStatInterv(int iInterv)
 void StatReport::getIntervCount(int time, StatMicMsgBody& body)
 {
     int iTimePoint = 0;
-    bool bNeedInit = false;
-    bool bGetIntev = false;
+    bool bNeedInit = false; // 是否需要被初始化
+    bool bGetIntev = false; // 是否找到 Intev
+    
+    // intervalCount 是一个 map
     if (body.intervalCount.size() == 0)  //第一次需要将所有描点值初始化为0
     {
         bNeedInit = true;
@@ -151,16 +153,17 @@ void StatReport::getIntervCount(int time, StatMicMsgBody& body)
         iTimePoint = _timePoint[i];
         if(bGetIntev == false && time < iTimePoint)
         {
-            bGetIntev = true;
+            bGetIntev = true; // 找到
             body.intervalCount[iTimePoint]++;
             if(bNeedInit == false)
-                break;
+                break; // 不需要被初始化直接退出
             else
-                continue;
+                continue; // 需要被初始化继续初始化
         }
-        if(bNeedInit == true)
+        if(bNeedInit == true) // 需要被初始化
         {
-           body.intervalCount[iTimePoint] = 0;
+            // 将所有 timePoint 的值初始化为 0  
+            body.intervalCount[iTimePoint] = 0;
         }
     }
     return;
@@ -242,7 +245,7 @@ void StatReport::report(const string& strModuleName,
     string sSlaveServerName = "";
     string appName = ""; // 由setdivision生成
 
-    if (bFromClient)
+    if (bFromClient) // 客户端调用
     {
         if (!_setName.empty())
         {
@@ -322,6 +325,7 @@ void StatReport::report(const string& strModuleName,
     submit(head, body, bFromClient);
 }
 
+// 上报一次调用信息
 void StatReport::report(const string& strMasterName,
                         const string& strMasterIp,
                         const string& strSlaveName,
@@ -362,39 +366,46 @@ void StatReport::report(const string& strMasterName,
         body.execCount = 1;
     }
 
-    submit(head, body, true);
+    submit(head, body, true);  // 提交客户端调用
 }
 
+// 提交上报信息：暂存到 _statMicMsgClient 或 _statMicMsgServer 中
 void StatReport::submit(StatMicMsgHead& head, StatMicMsgBody& body, bool bFromClient)
 {
     Lock lock(*this);
 
     MapStatMicMsg& msg = (bFromClient == true)?_statMicMsgClient:_statMicMsgServer;
 
-    auto it = msg.find( head );
+    auto it = msg.find( head ); // 
 
-    if ( it != msg.end() )
+    if ( it != msg.end() )  // 当前 head 已存在
     {
+        // 累加
         StatMicMsgBody& stBody      = it->second;
         stBody.count                += body.count;
         stBody.timeoutCount         += body.timeoutCount;
         stBody.execCount            += body.execCount;
         stBody.totalRspTime         += body.totalRspTime;
+        
+        // 更新最大响应时间
         if (stBody.maxRspTime < body.maxRspTime)
         {
             stBody.maxRspTime = body.maxRspTime;
         }
-        //非0最小值
+        
+        //非0最小值，更新最小响应时间
         if (stBody.minRspTime == 0 || (stBody.minRspTime > body.minRspTime && body.minRspTime != 0))
         {
             stBody.minRspTime = body.minRspTime;
         }
+        
+        // 获取 最大响应时间 分布情况
         getIntervCount(body.maxRspTime, stBody);
     }
     else
     {
         getIntervCount(body.maxRspTime, body);
-        msg[head] = body;
+        msg[head] = body; // head 不存在，向 msg 中添加当前映射
     }
 }
 
@@ -414,17 +425,23 @@ int StatReport::reportMicMsg(MapStatMicMsg& msg, bool bFromClient)
         }
 
        TLOGTARS("[StatReport::reportMicMsg get size:" << mStatMsg.size()<<"]"<< endl);
+       
+       // 遍历 MapStatMicMsg
        for(MapStatMicMsg::iterator it = mStatMsg.begin(); it != mStatMsg.end(); it++)
        {
-           const StatMicMsgHead &head = it->first;
+           const StatMicMsgHead &head = it->first;  // 当前 MicMsg 的 head
+           
+           //STAT_PROTOCOL_LEN  一次stat mic上报纯协议部分占用大小，用来控制udp大小防止超MTU 
            int iTemLen = STAT_PROTOCOL_LEN +head.masterName.length() + head.slaveName.length() + head.interfaceName.length()
-               + head.slaveSetName.length() + head.slaveSetArea.length() + head.slaveSetID.length();
-           iLen = iLen + iTemLen;
+               + head.slaveSetName.length() + head.slaveSetArea.length() + head.slaveSetID.length(); // 当前 MicMsg 长度
+           iLen = iLen + iTemLen;    // 当前 mTemp 中所有 MicMsg 的长度
            if(iLen > _maxReportSize) //不能超过udp 1472
            {
                if(_statPrx)
                {
                    TLOGTARS("[StatReport::reportMicMsg send size:" << mTemp.size()<<"]"<< endl);
+                   
+                   // mTemp 达到可以发送的最大长度时，通过ServantProxy调用RPC服务，异步上报统计信息
                    _statPrx->tars_set_timeout(_reportTimeout)->async_reportMicMsg(NULL,mTemp,bFromClient, ServerConfig::Context);
                }
                iLen = iTemLen;
@@ -442,7 +459,7 @@ int StatReport::reportMicMsg(MapStatMicMsg& msg, bool bFromClient)
                TLOGTARS("[StatReport::reportMicMsg display:" << os.str() << "]" << endl);
            }
        }
-       if(0 != (int)mTemp.size())
+       if(0 != (int)mTemp.size()) // 最后一组未达到最大长度而没有上报的 MicMsg
        {
            if(_statPrx)
            {
@@ -620,6 +637,7 @@ int StatReport::reportPropMsg()
     return -1;
 }
 
+// 合并 StatMicMsgHead 相同的 MapStatMicMsg
 void StatReport::addMicMsg(MapStatMicMsg& old, MapStatMicMsg& add)
 {
     auto iter = add.begin();
@@ -666,7 +684,7 @@ void StatReport::addMicMsg(MapStatMicMsg& old, MapStatMicMsg& add)
     }
 }
 
-void StatReport::run()
+void StatReport::run() // 轮询
 {
     while(!_terminate)
     {
@@ -678,29 +696,47 @@ void StatReport::run()
 
         try
         {
-            time_t tNow = TNOW;
+            time_t tNow = TNOW; // 获取当前时间
 
-            if(tNow - _time >= _reportInterval/1000)
+            if(tNow - _time >= _reportInterval/1000) // 超过间隔周期
             {
-                reportMicMsg(_statMicMsgClient, true);
+                // Mic = module interval call
+                reportMicMsg(_statMicMsgClient, true);  // 上报客户端统计信息
 
-                reportMicMsg(_statMicMsgServer, false);
-
+                reportMicMsg(_statMicMsgServer, false);  // 上报服务端统计信息
+                
+                // typedef  map<StatMicMsgHead, StatMicMsgBody>        MapStatMicMsg;
                 MapStatMicMsg mStatMsg;
-
+                
+                // 返回类型：vector<shared_ptr<CommunicatorEpoll>>
+                // 关系图：
+                /**
+                 * Communicator:
+                 *     - CommunicatorEpoll1     // 网络处理线程类
+                 *         - fooObjectProxy1    // 服务实体
+                 *         - barObjectProxy1
+                 *     - CommunicatorEpoll2
+                 *         - fooObjectProxy2
+                 *         - barObjectProxy2
+                 */
+                
+                // 获取当前通信器的全部 CommunicatorEpoll
                 auto communicatorEpolls = _communicator->getAllCommunicatorEpoll();
 
                 for(auto ce : communicatorEpolls)
                 {
                     MapStatMicMsg * pStatMsg;
-                    while(ce->popStatMsg(pStatMsg))
+                    while(ce->popStatMsg(pStatMsg)) // 最终由 AdapterProxy 在远程调用结束时统计
                     {
-                        addMicMsg(mStatMsg,*pStatMsg);
+                        // 合并 StatMicMsgHead 相同的 MapStatMicMsg
+                        addMicMsg(mStatMsg, *pStatMsg);
                         delete pStatMsg;
                     }
                 }
-
-                reportMicMsg(mStatMsg, true);
+                
+                // 上报当前 Application 需要调用的服务代理中所有的调用统计信息
+                // 当前 Application 为客户端
+                reportMicMsg(mStatMsg, true); 
 
                 reportPropMsg();
 
